@@ -134,7 +134,7 @@ def render_html(rows: list[dict[str, str]], league_count: int) -> str:
             f"<td>{format_cell(row.get('Album', ''))}</td>"
             f"<td>{format_cell(row.get('Round Name', ''))}</td>"
             f"<td>{format_cell(row.get('Submitter Name', ''))}</td>"
-            f"<td>{uri_cell}</td>"
+            f'<td data-sort="{format_cell(uri)}">{uri_cell}</td>'
             "</tr>"
         )
 
@@ -180,6 +180,27 @@ def render_html(rows: list[dict[str, str]], league_count: int) -> str:
       padding: 0.5rem;
       vertical-align: top;
     }}
+    th button {{
+      all: unset;
+      cursor: pointer;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }}
+    th button::after {{
+      content: "↕";
+      font-size: 0.8em;
+      opacity: 0.65;
+    }}
+    th button[data-dir="asc"]::after {{
+      content: "↑";
+      opacity: 1;
+    }}
+    th button[data-dir="desc"]::after {{
+      content: "↓";
+      opacity: 1;
+    }}
     tbody tr:hover {{
       background: #8882;
     }}
@@ -192,12 +213,12 @@ def render_html(rows: list[dict[str, str]], league_count: int) -> str:
     <table>
       <thead>
         <tr>
-          <th>Title</th>
-          <th>Artist(s)</th>
-          <th>Album</th>
-          <th>Round</th>
-          <th>Submitter</th>
-          <th>Spotify</th>
+          <th><button type="button">Title</button></th>
+          <th><button type="button">Artist(s)</button></th>
+          <th><button type="button">Album</button></th>
+          <th><button type="button">Round</button></th>
+          <th><button type="button">Submitter</button></th>
+          <th><button type="button">Spotify</button></th>
         </tr>
       </thead>
       <tbody>
@@ -205,6 +226,64 @@ def render_html(rows: list[dict[str, str]], league_count: int) -> str:
       </tbody>
     </table>
   </div>
+  <script>
+    (() => {{
+      const table = document.querySelector("table");
+      const tbody = table?.querySelector("tbody");
+      const headerButtons = table?.querySelectorAll("thead th button");
+      if (!table || !tbody || !headerButtons) return;
+
+      let sortedColumn = -1;
+      let sortDirection = "asc";
+
+      const getCellSortValue = (row, columnIndex) => {{
+        const cell = row.cells[columnIndex];
+        if (!cell) return "";
+        const customSort = cell.dataset.sort;
+        if (customSort !== undefined) return customSort.toLowerCase();
+        return (cell.textContent || "").trim().toLowerCase();
+      }};
+
+      const updateIndicators = () => {{
+        headerButtons.forEach((button, index) => {{
+          if (index === sortedColumn) {{
+            button.dataset.dir = sortDirection;
+          }} else {{
+            delete button.dataset.dir;
+          }}
+        }});
+      }};
+
+      headerButtons.forEach((button, columnIndex) => {{
+        button.addEventListener("click", () => {{
+          const rows = Array.from(tbody.querySelectorAll("tr"));
+          if (rows.length === 0) return;
+
+          if (sortedColumn === columnIndex) {{
+            sortDirection = sortDirection === "asc" ? "desc" : "asc";
+          }} else {{
+            sortedColumn = columnIndex;
+            sortDirection = "asc";
+          }}
+
+          rows.sort((a, b) => {{
+            const aValue = getCellSortValue(a, columnIndex);
+            const bValue = getCellSortValue(b, columnIndex);
+            const compare = aValue.localeCompare(bValue, undefined, {{
+              numeric: true,
+              sensitivity: "base",
+            }});
+            return sortDirection === "asc" ? compare : -compare;
+          }});
+
+          const fragment = document.createDocumentFragment();
+          rows.forEach((row) => fragment.appendChild(row));
+          tbody.appendChild(fragment);
+          updateIndicators();
+        }});
+      }});
+    }})();
+  </script>
 </body>
 </html>
 """
