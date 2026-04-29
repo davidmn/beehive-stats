@@ -28,6 +28,11 @@ def discover_competitor_files(exports_dir: Path) -> list[Path]:
     return sorted(exports_dir.glob("**/competitors.csv"))
 
 
+def discover_vote_files(exports_dir: Path) -> list[Path]:
+    """Return every votes.csv file under exports/."""
+    return sorted(exports_dir.glob("**/votes.csv"))
+
+
 def parse_league_from_path(path: Path, exports_dir: Path) -> str:
     """Infer league name from path: exports/<league>/submissions.csv."""
     relative = path.relative_to(exports_dir)
@@ -87,22 +92,50 @@ def load_competitors_map(
     return competitors_map
 
 
+def load_points_map(vote_files: list[Path]) -> dict[tuple[str, str, str], int]:
+    """Map (league, round_id, spotify_uri) to total points."""
+    points_map: dict[tuple[str, str, str], int] = {}
+    for csv_path in vote_files:
+        league = parse_league_from_path(csv_path, EXPORTS_DIR)
+        with csv_path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle)
+            for row in reader:
+                if not row:
+                    continue
+                round_id = (row.get("Round ID") or "").strip()
+                spotify_uri = (row.get("Spotify URI") or "").strip()
+                points_raw = (row.get("Points Assigned") or "").strip()
+                if not round_id or not spotify_uri:
+                    continue
+                try:
+                    points = int(points_raw)
+                except ValueError:
+                    points = 0
+                key = (league, round_id, spotify_uri)
+                points_map[key] = points_map.get(key, 0) + points
+    return points_map
+
+
 def enrich_submission_rows(
     rows: list[dict[str, str]],
     rounds_map: dict[tuple[str, str], dict[str, str]],
     competitors_map: dict[tuple[str, str], dict[str, str]],
+    points_map: dict[tuple[str, str, str], int],
 ) -> None:
     """Attach round details to each submission row in-place."""
     for row in rows:
         league = row.get("League", "")
         round_id = row.get("Round ID", "")
         submitter_id = row.get("Submitter ID", "")
+        spotify_uri = row.get("Spotify URI", "")
         round_row = rounds_map.get((league, round_id), {})
         competitor_row = competitors_map.get((league, submitter_id), {})
+        points = points_map.get((league, round_id, spotify_uri), 0)
         row["Round Name"] = round_row.get("Name", "")
         row["Round Description"] = round_row.get("Description", "")
         row["Round Playlist URL"] = round_row.get("Playlist URL", "")
         row["Submitter Name"] = competitor_row.get("Name", "")
+        row["Points"] = str(points)
 
 
 def format_cell(value: str) -> str:
@@ -134,6 +167,7 @@ def render_html(rows: list[dict[str, str]], league_count: int) -> str:
             f"<td>{format_cell(row.get('Album', ''))}</td>"
             f"<td>{format_cell(row.get('Round Name', ''))}</td>"
             f"<td>{format_cell(row.get('Submitter Name', ''))}</td>"
+            f'<td data-sort="{format_cell(row.get("Points", "0"))}">{format_cell(row.get("Points", "0"))}</td>'
             f'<td data-sort="{format_cell(uri)}">{uri_cell}</td>'
             "</tr>"
         )
@@ -204,6 +238,14 @@ def render_html(rows: list[dict[str, str]], league_count: int) -> str:
     tbody tr:hover {{
       background: #8882;
     }}
+    footer {{
+      margin-top: 1rem;
+      font-size: 0.95rem;
+      opacity: 0.9;
+    }}
+    footer a {{
+      color: inherit;
+    }}
   </style>
 </head>
 <body>
@@ -218,6 +260,7 @@ def render_html(rows: list[dict[str, str]], league_count: int) -> str:
           <th><button type="button">Album</button></th>
           <th><button type="button">Round</button></th>
           <th><button type="button">Submitter</button></th>
+          <th><button type="button">Points</button></th>
           <th><button type="button">Spotify</button></th>
         </tr>
       </thead>
@@ -226,6 +269,10 @@ def render_html(rows: list[dict[str, str]], league_count: int) -> str:
       </tbody>
     </table>
   </div>
+  <footer>
+    Made by <a href="https://bsky.app/profile/megaslippers.net" target="_blank" rel="noopener noreferrer">MegaSlippers</a> -
+    <a href="https://github.com/davidmn/beehive-stats" target="_blank" rel="noopener noreferrer">Repo</a>
+  </footer>
   <script>
     (() => {{
       const table = document.querySelector("table");
@@ -293,10 +340,12 @@ def main() -> int:
     submission_files = discover_submission_files(EXPORTS_DIR)
     round_files = discover_round_files(EXPORTS_DIR)
     competitor_files = discover_competitor_files(EXPORTS_DIR)
+    vote_files = discover_vote_files(EXPORTS_DIR)
     rounds_map = load_rounds_map(round_files)
     competitors_map = load_competitors_map(competitor_files)
+    points_map = load_points_map(vote_files)
     rows = load_rows(submission_files)
-    enrich_submission_rows(rows, rounds_map, competitors_map)
+    enrich_submission_rows(rows, rounds_map, competitors_map, points_map)
     rows.sort(key=lambda row: row.get("Created", ""))
 
     html_output = render_html(rows, league_count=len({row["League"] for row in rows}))
