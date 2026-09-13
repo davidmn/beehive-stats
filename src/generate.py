@@ -41,6 +41,18 @@ def parse_league_from_path(path: Path, exports_dir: Path) -> str:
     return "unknown"
 
 
+def format_league_label(league: str) -> str:
+    """Turn league-0 into 1, league-1 into 2, etc."""
+    prefix = "league-"
+    if league.startswith(prefix):
+        suffix = league[len(prefix) :]
+        try:
+            return str(int(suffix) + 1)
+        except ValueError:
+            return league
+    return league
+
+
 def load_rows(submission_files: list[Path]) -> list[dict[str, str]]:
     """Load all CSV rows and include their league name."""
     rows: list[dict[str, str]] = []
@@ -165,6 +177,7 @@ def render_html(rows: list[dict[str, str]], league_count: int) -> str:
             f"<td>{format_cell(row.get('Title', ''))}</td>"
             f"<td>{format_cell(row.get('Artist(s)', ''))}</td>"
             f"<td>{format_cell(row.get('Album', ''))}</td>"
+            f"<td>{format_cell(format_league_label(row.get('League', '')))}</td>"
             f"<td>{format_cell(row.get('Round Name', ''))}</td>"
             f"<td>{format_cell(row.get('Submitter Name', ''))}</td>"
             f'<td data-sort="{format_cell(row.get("Points", "0"))}">{format_cell(row.get("Points", "0"))}</td>'
@@ -204,7 +217,7 @@ def render_html(rows: list[dict[str, str]], league_count: int) -> str:
     table {{
       width: 100%;
       border-collapse: collapse;
-      min-width: 900px;
+      min-width: 1000px;
     }}
     thead {{
       position: sticky;
@@ -262,6 +275,7 @@ def render_html(rows: list[dict[str, str]], league_count: int) -> str:
           <th><button type="button">Title</button></th>
           <th><button type="button">Artist(s)</button></th>
           <th><button type="button">Album</button></th>
+          <th><button type="button">League</button></th>
           <th><button type="button">Round</button></th>
           <th><button type="button">Submitter</button></th>
           <th><button type="button">Points</button></th>
